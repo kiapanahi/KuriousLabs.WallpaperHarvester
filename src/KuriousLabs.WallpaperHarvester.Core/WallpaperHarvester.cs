@@ -3,6 +3,7 @@ using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Configuration;
 using LibGit2Sharp;
 using System.IO;
+using System.Threading.Tasks;
 using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 
 namespace KuriousLabs.WallpaperHarvester.Core;
