@@ -1,9 +1,12 @@
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
-using Microsoft.Extensions.Configuration;
-using LibGit2Sharp;
 using System.IO;
 using System.Threading.Tasks;
+
+using LibGit2Sharp;
+
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+
 using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 
 namespace KuriousLabs.WallpaperHarvester.Core;
@@ -43,10 +46,8 @@ internal sealed partial class WallpaperHarvester : IWallpaperHarvester
             return true;
         }).ToArray();
 
-        await Parallel.ForEachAsync(validRepos, new ParallelOptions { MaxDegreeOfParallelism = _options.MaxParallelism }, async (repo, _) =>
-        {
-            await ProcessRepositoryAsync(repo, directory);
-        });
+        var tasks = validRepos.Select(repo => ProcessRepositoryAsync(repo, directory));
+        await Task.WhenAll(tasks);
     }
 
     private async Task ProcessRepositoryAsync(string repo, string directory)
@@ -62,9 +63,9 @@ internal sealed partial class WallpaperHarvester : IWallpaperHarvester
                 using var repository = new Repository(repoDir);
                 var remote = repository.Network.Remotes["origin"];
                 var refSpecs = remote.FetchRefSpecs.Select(x => x.Specification);
-                
+
                 Commands.Fetch(repository, remote.Name, refSpecs, null, "Fetching updates");
-                
+
                 // Fast-forward merge if possible
                 var remoteBranch = repository.Branches[$"origin/{repository.Head.FriendlyName}"];
                 if (remoteBranch is not null)
@@ -72,7 +73,7 @@ internal sealed partial class WallpaperHarvester : IWallpaperHarvester
                     var signature = new Signature("WallpaperHarvester", "harvester@kuriouslabs.com", DateTimeOffset.Now);
                     Commands.Checkout(repository, remoteBranch.Tip);
                 }
-                
+
                 LogUpdated(_logger, repo);
             }
             catch (Exception ex)
