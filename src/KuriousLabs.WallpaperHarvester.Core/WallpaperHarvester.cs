@@ -3,18 +3,17 @@ using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Configuration;
 using LibGit2Sharp;
 using System.IO;
+using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 
 namespace KuriousLabs.WallpaperHarvester.Core;
 
-public class WallpaperHarvester : IWallpaperHarvester
+internal sealed partial class WallpaperHarvester : IWallpaperHarvester
 {
-    private readonly ILogger<WallpaperHarvester> _logger;
     private readonly AppOptions _options;
     private readonly IConfiguration _config;
 
-    public WallpaperHarvester(ILogger<WallpaperHarvester> logger, IOptions<AppOptions> options, IConfiguration config)
+    public WallpaperHarvester(IOptions<AppOptions> options, IConfiguration config)
     {
-        _logger = logger;
         _options = options.Value;
         _config = config;
     }
@@ -24,7 +23,7 @@ public class WallpaperHarvester : IWallpaperHarvester
         var repos = _config.GetSection("WallpaperRepositories").Get<string[]>();
         if (repos is null || repos.Length == 0)
         {
-            _logger.LogWarning("No repositories configured");
+            LogNoRepos(null!);
             return;
         }
 
@@ -33,15 +32,12 @@ public class WallpaperHarvester : IWallpaperHarvester
 
         foreach (var repo in repos)
         {
-            var parts = repo.Split('/');
-            if (parts.Length != 2)
+            if (repo.Split('/') is not [var owner, var name])
             {
-                _logger.LogWarning("Invalid repository format: {repo}", repo);
+                LogInvalidRepo(null!, repo);
                 continue;
             }
 
-            var owner = parts[0];
-            var name = parts[1];
             var repoDir = Path.Combine(directory, name);
 
             if (Directory.Exists(repoDir))
@@ -52,11 +48,11 @@ public class WallpaperHarvester : IWallpaperHarvester
                     using var repository = new Repository(repoDir);
                     var signature = new Signature("WallpaperHarvester", "harvester@kuriouslabs.com", DateTimeOffset.Now);
                     Commands.Pull(repository, signature, new PullOptions());
-                    _logger.LogInformation("Updated {repo}", repo);
+                    LogUpdated(null!, repo);
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Failed to update {repo}", repo);
+                    LogUpdateFailed(null!, ex, repo);
                 }
             }
             else
@@ -65,13 +61,31 @@ public class WallpaperHarvester : IWallpaperHarvester
                 try
                 {
                     Repository.Clone($"https://github.com/{repo}.git", repoDir);
-                    _logger.LogInformation("Cloned {repo}", repo);
+                    LogCloned(null!, repo);
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Failed to clone {repo}", repo);
+                    LogCloneFailed(null!, ex, repo);
                 }
             }
         }
     }
+
+    [LoggerMessage(LogLevel.Information, "Updated {repo}")]
+    static partial void LogUpdated(ILogger logger, string repo);
+
+    [LoggerMessage(LogLevel.Information, "Cloned {repo}")]
+    static partial void LogCloned(ILogger logger, string repo);
+
+    [LoggerMessage(LogLevel.Warning, "Invalid repository format: {repo}")]
+    static partial void LogInvalidRepo(ILogger logger, string repo);
+
+    [LoggerMessage(LogLevel.Warning, "No repositories configured")]
+    static partial void LogNoRepos(ILogger logger);
+
+    [LoggerMessage(LogLevel.Error, "Failed to update {repo}")]
+    static partial void LogUpdateFailed(ILogger logger, Exception ex, string repo);
+
+    [LoggerMessage(LogLevel.Error, "Failed to clone {repo}")]
+    static partial void LogCloneFailed(ILogger logger, Exception ex, string repo);
 }

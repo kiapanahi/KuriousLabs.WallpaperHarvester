@@ -24,7 +24,10 @@ This project is intended to clone and/or update a list of github repositories th
 
 ## Code Style
 - Prefer async/await over direct Task handling
-- When checking for nul in C# prefer to use `is null` or `is not null`
+- use `sealed` and `internal` for classes unless they need to be inherited or accessed outside the assembly.
+- use **readonly** for fields that are not supposed to change after initialization.
+- use source-generated logger message attribute for logging
+- When checking for null in C# prefer to use `is null` or `is not null`
 - Use nullable reference types
 - Use var over explicit type declarations 
 - Always implement IDisposable when dealing with event handlers or subscriptions

@@ -1,6 +1,6 @@
 namespace KuriousLabs.WallpaperHarvester.Core;
 
-public class AppOptions
+internal sealed record AppOptions
 {
-    public string WallpaperDirectory { get; set; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Pictures", "Wallpapers");
+    public string WallpaperDirectory { get; init; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Pictures", "Wallpapers");
 }

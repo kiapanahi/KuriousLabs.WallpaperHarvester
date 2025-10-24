@@ -1,6 +1,6 @@
 namespace KuriousLabs.WallpaperHarvester.Core;
 
-public interface IWallpaperHarvester
+internal interface IWallpaperHarvester
 {
     Task HarvestAsync();
 }
