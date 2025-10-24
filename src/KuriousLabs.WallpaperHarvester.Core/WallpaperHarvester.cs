@@ -46,8 +46,18 @@ public sealed partial class WallpaperHarvester : IWallpaperHarvester
             return true;
         }).ToArray();
 
-        var tasks = validRepos.Select(repo => ProcessRepositoryAsync(repo, directory));
-        await Task.WhenAll(tasks);
+        if (_options.UseParallel)
+        {
+            var tasks = validRepos.Select(repo => ProcessRepositoryAsync(repo, directory));
+            await Task.WhenAll(tasks);
+        }
+        else
+        {
+            foreach (var repo in validRepos)
+            {
+                await ProcessRepositoryAsync(repo, directory);
+            }
+        }
     }
 
     private async Task ProcessRepositoryAsync(string repo, string directory)
