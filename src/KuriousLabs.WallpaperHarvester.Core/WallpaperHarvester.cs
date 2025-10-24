@@ -76,12 +76,11 @@ public sealed partial class WallpaperHarvester : IWallpaperHarvester
 
                 Commands.Fetch(repository, remote.Name, refSpecs, null, "Fetching updates");
 
-                // Fast-forward merge if possible
+                // Hard reset to remote HEAD to avoid detached HEAD state and merge conflicts
                 var remoteBranch = repository.Branches[$"origin/{repository.Head.FriendlyName}"];
                 if (remoteBranch is not null)
                 {
-                    var signature = new Signature("WallpaperHarvester", "harvester@kuriouslabs.com", DateTimeOffset.Now);
-                    Commands.Checkout(repository, remoteBranch.Tip);
+                    repository.Reset(ResetMode.Hard, remoteBranch.Tip);
                 }
 
                 LogUpdated(_logger, repo);
