@@ -12,7 +12,6 @@ This project is intended to clone and/or update a list of github repositories th
 - Use vertical slice architecture for every feature.
 - .NET 10 with C# latest features, file-scoped namespaces
 - Database: PostgreSQL with EF Core
-- Serilog for logging
 - Always use minimal APIs.
 
 

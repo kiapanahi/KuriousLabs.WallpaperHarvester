@@ -4,8 +4,6 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageVersion Include="LibGit2Sharp" Version="0.31.0" />
-    <PackageVersion Include="Serilog.Extensions.Hosting" Version="9.0.0" />
-    <PackageVersion Include="Serilog.Settings.Configuration" Version="9.0.0" />
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="9.0.10" />
     <PackageVersion Include="Microsoft.Extensions.Options" Version="9.0.10" />
   </ItemGroup>
