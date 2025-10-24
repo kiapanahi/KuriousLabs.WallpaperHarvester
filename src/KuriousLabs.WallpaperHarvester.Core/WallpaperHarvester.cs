@@ -9,11 +9,13 @@ namespace KuriousLabs.WallpaperHarvester.Core;
 
 internal sealed partial class WallpaperHarvester : IWallpaperHarvester
 {
+    private readonly ILogger<WallpaperHarvester> _logger;
     private readonly AppOptions _options;
     private readonly IConfiguration _config;
 
-    public WallpaperHarvester(IOptions<AppOptions> options, IConfiguration config)
+    public WallpaperHarvester(ILogger<WallpaperHarvester> logger, IOptions<AppOptions> options, IConfiguration config)
     {
+        _logger = logger;
         _options = options.Value;
         _config = config;
     }
@@ -23,7 +25,7 @@ internal sealed partial class WallpaperHarvester : IWallpaperHarvester
         var repos = _config.GetSection("WallpaperRepositories").Get<string[]>();
         if (repos is null || repos.Length == 0)
         {
-            LogNoRepos(null!);
+            LogNoRepos(_logger);
             return;
         }
 
@@ -34,7 +36,7 @@ internal sealed partial class WallpaperHarvester : IWallpaperHarvester
         {
             if (repo.Split('/') is not [var owner, var name])
             {
-                LogInvalidRepo(null!, repo);
+                LogInvalidRepo(_logger, repo);
                 continue;
             }
 
@@ -42,30 +44,41 @@ internal sealed partial class WallpaperHarvester : IWallpaperHarvester
 
             if (Directory.Exists(repoDir))
             {
-                // update
+                // update existing repository
                 try
                 {
                     using var repository = new Repository(repoDir);
-                    var signature = new Signature("WallpaperHarvester", "harvester@kuriouslabs.com", DateTimeOffset.Now);
-                    Commands.Pull(repository, signature, new PullOptions());
-                    LogUpdated(null!, repo);
+                    var remote = repository.Network.Remotes["origin"];
+                    var refSpecs = remote.FetchRefSpecs.Select(x => x.Specification);
+                    
+                    Commands.Fetch(repository, remote.Name, refSpecs, null, "Fetching updates");
+                    
+                    // Fast-forward merge if possible
+                    var remoteBranch = repository.Branches[$"origin/{repository.Head.FriendlyName}"];
+                    if (remoteBranch is not null)
+                    {
+                        var signature = new Signature("WallpaperHarvester", "harvester@kuriouslabs.com", DateTimeOffset.Now);
+                        Commands.Checkout(repository, remoteBranch.Tip);
+                    }
+                    
+                    LogUpdated(_logger, repo);
                 }
                 catch (Exception ex)
                 {
-                    LogUpdateFailed(null!, ex, repo);
+                    LogUpdateFailed(_logger, ex, repo);
                 }
             }
             else
             {
-                // clone
+                // clone new repository
                 try
                 {
                     Repository.Clone($"https://github.com/{repo}.git", repoDir);
-                    LogCloned(null!, repo);
+                    LogCloned(_logger, repo);
                 }
                 catch (Exception ex)
                 {
-                    LogCloneFailed(null!, ex, repo);
+                    LogCloneFailed(_logger, ex, repo);
                 }
             }
         }
