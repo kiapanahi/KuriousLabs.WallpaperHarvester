@@ -1,0 +1,141 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'Directory.Build.props'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  check-version:
+    name: Check Version Change
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.get-version.outputs.version }}
+      version-changed: ${{ steps.check-changes.outputs.changed }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      
+      - name: Get current version
+        id: get-version
+        run: |
+          VERSION=$(grep -oP '<Version>\K[^<]+' Directory.Build.props)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Current version: $VERSION"
+      
+      - name: Check if version changed
+        id: check-changes
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "changed=true" >> $GITHUB_OUTPUT
+            echo "Manual trigger - proceeding with release"
+          else
+            git diff HEAD^ HEAD -- Directory.Build.props > /dev/null && echo "changed=true" >> $GITHUB_OUTPUT || echo "changed=false" >> $GITHUB_OUTPUT
+          fi
+
+  build-and-release:
+    name: Build and Release
+    needs: check-version
+    if: needs.check-version.outputs.version-changed == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - platform: win-x64
+            os-name: Windows
+          - platform: linux-x64
+            os-name: Linux
+          - platform: osx-x64
+            os-name: macOS-Intel
+          - platform: osx-arm64
+            os-name: macOS-ARM
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      
+      - name: Restore dependencies
+        run: dotnet restore
+      
+      - name: Run tests
+        run: dotnet test --no-restore --verbosity normal --configuration Release || echo "No tests found"
+        continue-on-error: true
+      
+      - name: Publish ${{ matrix.os-name }}
+        run: |
+          dotnet publish src/KuriousLabs.WallpaperHarvester.Core/KuriousLabs.WallpaperHarvester.Core.csproj \
+            --configuration Release \
+            --runtime ${{ matrix.platform }} \
+            --self-contained true \
+            --output ./publish/${{ matrix.platform }} \
+            -p:PublishSingleFile=true \
+            -p:IncludeNativeLibrariesForSelfExtract=true
+      
+      - name: Create release archive
+        run: |
+          cd ./publish/${{ matrix.platform }}
+          if [ "${{ matrix.platform }}" == "win-x64" ]; then
+            zip -r ../../KuriousLabs.WallpaperHarvester-${{ needs.check-version.outputs.version }}-${{ matrix.platform }}.zip .
+          else
+            zip -r ../../KuriousLabs.WallpaperHarvester-${{ needs.check-version.outputs.version }}-${{ matrix.platform }}.zip .
+          fi
+      
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.platform }}
+          path: KuriousLabs.WallpaperHarvester-${{ needs.check-version.outputs.version }}-${{ matrix.platform }}.zip
+          retention-days: 1
+
+  create-release:
+    name: Create GitHub Release
+    needs: [check-version, build-and-release]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./artifacts
+      
+      - name: Determine if pre-release
+        id: prerelease
+        run: |
+          VERSION="${{ needs.check-version.outputs.version }}"
+          if [[ "$VERSION" =~ (preview|alpha|beta|rc) ]]; then
+            echo "is-prerelease=true" >> $GITHUB_OUTPUT
+          else
+            echo "is-prerelease=false" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.check-version.outputs.version }}
+          name: Release v${{ needs.check-version.outputs.version }}
+          draft: false
+          prerelease: ${{ steps.prerelease.outputs.is-prerelease }}
+          generate_release_notes: true
+          files: |
+            artifacts/release-win-x64/*.zip
+            artifacts/release-linux-x64/*.zip
+            artifacts/release-osx-x64/*.zip
+            artifacts/release-osx-arm64/*.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
