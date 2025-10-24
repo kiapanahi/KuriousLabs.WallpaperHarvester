@@ -14,4 +14,7 @@
   <Folder Name="/src/">
     <Project Path="src/KuriousLabs.WallpaperHarvester.Core/KuriousLabs.WallpaperHarvester.Core.csproj" />
   </Folder>
+  <Folder Name="/test/">
+    <Project Path="test/KuriousLabs.WallpaperHarvester.Tests/KuriousLabs.WallpaperHarvester.Tests.csproj" />
+  </Folder>
 </Solution>

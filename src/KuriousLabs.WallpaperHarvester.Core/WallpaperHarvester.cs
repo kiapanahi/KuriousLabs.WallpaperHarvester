@@ -11,7 +11,7 @@ using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 
 namespace KuriousLabs.WallpaperHarvester.Core;
 
-internal sealed partial class WallpaperHarvester : IWallpaperHarvester
+public sealed partial class WallpaperHarvester : IWallpaperHarvester
 {
     private readonly ILogger<WallpaperHarvester> _logger;
     private readonly AppOptions _options;
