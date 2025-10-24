@@ -86,11 +86,7 @@ jobs:
       - name: Create release archive
         run: |
           cd ./publish/${{ matrix.platform }}
-          if [ "${{ matrix.platform }}" == "win-x64" ]; then
-            zip -r ../../KuriousLabs.WallpaperHarvester-${{ needs.check-version.outputs.version }}-${{ matrix.platform }}.zip .
-          else
-            zip -r ../../KuriousLabs.WallpaperHarvester-${{ needs.check-version.outputs.version }}-${{ matrix.platform }}.zip .
-          fi
+          zip -r ../../KuriousLabs.WallpaperHarvester-${{ needs.check-version.outputs.version }}-${{ matrix.platform }}.zip .
       
       - name: Upload artifact
         uses: actions/upload-artifact@v4
