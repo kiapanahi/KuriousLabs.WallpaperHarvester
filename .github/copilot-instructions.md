@@ -91,10 +91,10 @@ This project is intended to clone and/or update a list of github repositories th
 - Always review code before merging
 
 ## Versioning Policy
-- Version format follows MAJOR.MINOR.PATCH (e.g., 15.2.3)
+- Version format follows MAJOR.MINOR.PATCH (e.g., 1.0.2)
 - Update version in `Directory.Build.props` for each PR merged to main:
-  - Features/New functionality: Increment MAJOR version (e.g., 15.0.0 → 16.0.0)
-  - Bug fixes: Increment MINOR version (e.g., 15.0.0 → 15.1.0)
-  - Patches/Code cleanup/Refactoring: Increment PATCH version (e.g., 15.0.0 → 15.0.1)
+  - Features/New functionality: Increment MAJOR version (e.g., 1.0.0 → 2.0.0)
+  - Bug fixes: Increment MINOR version (e.g., 1.0.0 → 1.1.0)
+  - Patches/Code cleanup/Refactoring: Increment PATCH version (e.g., 1.0.0 → 15.0.1)
 - Every merged PR must include a version bump
 - Version number provides traceability to feature implementations and fixes
