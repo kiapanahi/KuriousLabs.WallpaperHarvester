@@ -1,13 +1,17 @@
+using System.IO;
+using System.Threading.Tasks;
+
+using LibGit2Sharp;
+
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Microsoft.Extensions.Configuration;
-using LibGit2Sharp;
-using System.IO;
+
 using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 
 namespace KuriousLabs.WallpaperHarvester.Core;
 
-internal sealed partial class WallpaperHarvester : IWallpaperHarvester
+public sealed partial class WallpaperHarvester : IWallpaperHarvester
 {
     private readonly ILogger<WallpaperHarvester> _logger;
     private readonly AppOptions _options;
@@ -32,54 +36,62 @@ internal sealed partial class WallpaperHarvester : IWallpaperHarvester
         var directory = _options.WallpaperDirectory;
         Directory.CreateDirectory(directory);
 
-        foreach (var repo in repos)
+        var validRepos = repos.Where(repo =>
         {
             if (repo.Split('/') is not [var owner, var name])
             {
                 LogInvalidRepo(_logger, repo);
-                continue;
+                return false;
             }
+            return true;
+        }).ToArray();
 
-            var repoDir = Path.Combine(directory, name);
+        var tasks = validRepos.Select(repo => ProcessRepositoryAsync(repo, directory));
+        await Task.WhenAll(tasks);
+    }
 
-            if (Directory.Exists(repoDir))
+    private async Task ProcessRepositoryAsync(string repo, string directory)
+    {
+        var name = repo.Split('/')[1];
+        var repoDir = Path.Combine(directory, name);
+
+        if (Directory.Exists(repoDir))
+        {
+            // update existing repository
+            try
             {
-                // update existing repository
-                try
+                using var repository = new Repository(repoDir);
+                var remote = repository.Network.Remotes["origin"];
+                var refSpecs = remote.FetchRefSpecs.Select(x => x.Specification);
+
+                Commands.Fetch(repository, remote.Name, refSpecs, null, "Fetching updates");
+
+                // Fast-forward merge if possible
+                var remoteBranch = repository.Branches[$"origin/{repository.Head.FriendlyName}"];
+                if (remoteBranch is not null)
                 {
-                    using var repository = new Repository(repoDir);
-                    var remote = repository.Network.Remotes["origin"];
-                    var refSpecs = remote.FetchRefSpecs.Select(x => x.Specification);
-                    
-                    Commands.Fetch(repository, remote.Name, refSpecs, null, "Fetching updates");
-                    
-                    // Fast-forward merge if possible
-                    var remoteBranch = repository.Branches[$"origin/{repository.Head.FriendlyName}"];
-                    if (remoteBranch is not null)
-                    {
-                        var signature = new Signature("WallpaperHarvester", "harvester@kuriouslabs.com", DateTimeOffset.Now);
-                        Commands.Checkout(repository, remoteBranch.Tip);
-                    }
-                    
-                    LogUpdated(_logger, repo);
+                    var signature = new Signature("WallpaperHarvester", "harvester@kuriouslabs.com", DateTimeOffset.Now);
+                    Commands.Checkout(repository, remoteBranch.Tip);
                 }
-                catch (Exception ex)
-                {
-                    LogUpdateFailed(_logger, ex, repo);
-                }
+
+                LogUpdated(_logger, repo);
             }
-            else
+            catch (Exception ex)
             {
-                // clone new repository
-                try
-                {
-                    Repository.Clone($"https://github.com/{repo}.git", repoDir);
-                    LogCloned(_logger, repo);
-                }
-                catch (Exception ex)
-                {
-                    LogCloneFailed(_logger, ex, repo);
-                }
+                LogUpdateFailed(_logger, ex, repo);
+            }
+        }
+        else
+        {
+            // clone new repository
+            try
+            {
+                Repository.Clone($"https://github.com/{repo}.git", repoDir);
+                LogCloned(_logger, repo);
+            }
+            catch (Exception ex)
+            {
+                LogCloneFailed(_logger, ex, repo);
             }
         }
     }

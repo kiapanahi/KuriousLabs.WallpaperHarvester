@@ -20,12 +20,22 @@ tab_width = 4
 # New line preferences
 insert_final_newline = false
 
-#### .NET Coding Conventions ####
-[*.{cs,vb}]
 
 # Organize usings
 dotnet_separate_import_directive_groups = true
 dotnet_sort_system_directives_first = true
+dotnet_remove_unnecessary_imports = true
+# unused directives
+dotnet_diagnostic.IDE0005.severity = none
+dotnet_diagnostic.CS8019.severity = silent
+dotnet_diagnostic.IDE0161.severity = refactoring
+csharp_style_namespace_declarations = file_scoped
+# Sort using and Import directives with System.* appearing first
+dotnet_sort_system_directives_first = true
+dotnet_separate_import_directive_groups = false
+dotnet_style_namespace_match_folder = true
+dotnet_diagnostic.IDE0130.severity = warning
+
 file_header_template = unset
 
 # this. and Me. preferences
