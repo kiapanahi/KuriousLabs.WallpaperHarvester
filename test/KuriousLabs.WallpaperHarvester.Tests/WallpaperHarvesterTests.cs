@@ -94,6 +94,27 @@ public class WallpaperHarvesterTests
         // Should not throw exceptions, should log errors instead
         Assert.True(true);
     }
+
+    [Fact]
+    public async Task HarvestAsyncWithVerboseModeDoesNotThrow()
+    {
+        // Arrange
+        var logger = new TestLogger();
+        var options = Microsoft.Extensions.Options.Options.Create(new AppOptions
+        {
+            WallpaperDirectory = Path.Combine(Path.GetTempPath(), "TestWallpapersVerbose"),
+            Verbose = true
+        });
+        var config = new TestConfiguration(ErrorRepos);
+
+        var harvester = new KuriousLabs.WallpaperHarvester.Core.WallpaperHarvester(logger, options, config);
+
+        // Act
+        await harvester.HarvestAsync();
+
+        // Assert - Should not throw when verbose mode is enabled
+        Assert.True(true);
+    }
 }
 
 // Test implementations
