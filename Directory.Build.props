@@ -2,7 +2,7 @@
   <PropertyGroup>
     <TargetFramework>net9.0</TargetFramework>
     <Nullable>enable</Nullable>
-    <Version>5.0.1</Version>
+    <Version>5.0.2</Version>
     <LangVersion>latest</LangVersion>
     <AnalysisMode>recommended</AnalysisMode>
     <AnalysisLevel>latest-recommended</AnalysisLevel>
