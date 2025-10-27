@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.IO;
 using System.Threading.Tasks;
 
@@ -6,6 +7,9 @@ using LibGit2Sharp;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+
+using Polly;
+using Polly.Retry;
 
 using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 
@@ -16,21 +20,39 @@ public sealed partial class WallpaperHarvester : IWallpaperHarvester
     private readonly ILogger<WallpaperHarvester> _logger;
     private readonly AppOptions _options;
     private readonly IConfiguration _config;
+    private readonly ResiliencePipeline _retryPipeline;
 
     public WallpaperHarvester(ILogger<WallpaperHarvester> logger, IOptions<AppOptions> options, IConfiguration config)
     {
         _logger = logger;
         _options = options.Value;
         _config = config;
+        
+        // Create retry pipeline for transient failures
+        _retryPipeline = new ResiliencePipelineBuilder()
+            .AddRetry(new RetryStrategyOptions
+            {
+                ShouldHandle = new PredicateBuilder().Handle<LibGit2SharpException>(ex => IsTransientException(ex))
+                    .Handle<IOException>(),
+                MaxRetryAttempts = 3,
+                Delay = TimeSpan.FromSeconds(1),
+                BackoffType = DelayBackoffType.Exponential,
+                OnRetry = args =>
+                {
+                    LogRetry(_logger, args.AttemptNumber, args.Outcome.Exception?.Message ?? "Unknown error");
+                    return ValueTask.CompletedTask;
+                }
+            })
+            .Build();
     }
 
-    public async Task HarvestAsync(CancellationToken cancellationToken = default)
+    public async Task<HarvestResult> HarvestAsync(CancellationToken cancellationToken = default)
     {
         var repos = _config.GetSection("WallpaperRepositories").Get<string[]>();
         if (repos is null || repos.Length == 0)
         {
             LogNoRepos(_logger);
-            return;
+            return new HarvestResult(0, 0, 0, new List<string>());
         }
 
         var directory = _options.WallpaperDirectory;
@@ -46,9 +68,25 @@ public sealed partial class WallpaperHarvester : IWallpaperHarvester
             return true;
         }).ToArray();
 
+        var succeeded = 0;
+        var failed = 0;
+        var failedRepos = new ConcurrentBag<string>();
+
         if (_options.UseParallel)
         {
-            var tasks = validRepos.Select(repo => ProcessRepositoryAsync(repo, directory, cancellationToken));
+            var tasks = validRepos.Select(async repo =>
+            {
+                var success = await ProcessRepositoryAsync(repo, directory, cancellationToken);
+                if (success)
+                {
+                    Interlocked.Increment(ref succeeded);
+                }
+                else
+                {
+                    Interlocked.Increment(ref failed);
+                    failedRepos.Add(repo);
+                }
+            });
             await Task.WhenAll(tasks);
         }
         else
@@ -56,92 +94,122 @@ public sealed partial class WallpaperHarvester : IWallpaperHarvester
             foreach (var repo in validRepos)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                await ProcessRepositoryAsync(repo, directory, cancellationToken);
+                var success = await ProcessRepositoryAsync(repo, directory, cancellationToken);
+                if (success)
+                {
+                    succeeded++;
+                }
+                else
+                {
+                    failed++;
+                    failedRepos.Add(repo);
+                }
             }
         }
+
+        var result = new HarvestResult(validRepos.Length, succeeded, failed, failedRepos.ToList());
+        LogHarvestSummary(_logger, succeeded, validRepos.Length, failed);
+        return result;
     }
 
-    private Task ProcessRepositoryAsync(string repo, string directory, CancellationToken cancellationToken)
+    private async Task<bool> ProcessRepositoryAsync(string repo, string directory, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
         var name = repo.Split('/')[1];
         var repoDir = Path.Combine(directory, name);
 
-        if (Directory.Exists(repoDir))
+        try
         {
-            // update existing repository
-            try
+            await _retryPipeline.ExecuteAsync(ct =>
             {
-                using var repository = new Repository(repoDir);
-                var remote = repository.Network.Remotes["origin"];
-                var refSpecs = remote.FetchRefSpecs.Select(x => x.Specification);
-
-                var fetchOptions = new FetchOptions();
-                if (_options.Verbose)
+                if (Directory.Exists(repoDir))
                 {
-                    fetchOptions.OnTransferProgress = progress =>
+                    // update existing repository
+                    using var repository = new Repository(repoDir);
+                    var remote = repository.Network.Remotes["origin"];
+                    var refSpecs = remote.FetchRefSpecs.Select(x => x.Specification);
+
+                    var fetchOptions = new FetchOptions();
+                    if (_options.Verbose)
                     {
-                        var percent = progress.TotalObjects > 0 
-                            ? (100 * progress.ReceivedObjects) / progress.TotalObjects 
-                            : 0;
-                        LogFetchProgress(_logger, repo, percent, progress.ReceivedObjects, progress.TotalObjects);
-                        return true;
-                    };
+                        fetchOptions.OnTransferProgress = progress =>
+                        {
+                            var percent = progress.TotalObjects > 0
+                                ? (100 * progress.ReceivedObjects) / progress.TotalObjects
+                                : 0;
+                            LogFetchProgress(_logger, repo, percent, progress.ReceivedObjects, progress.TotalObjects);
+                            return true;
+                        };
+                    }
+
+                    Commands.Fetch(repository, remote.Name, refSpecs, fetchOptions, "Fetching updates");
+
+                    ct.ThrowIfCancellationRequested();
+
+                    // Hard reset to remote HEAD to avoid detached HEAD state and merge conflicts
+                    var remoteBranch = repository.Branches[$"origin/{repository.Head.FriendlyName}"];
+                    if (remoteBranch is not null)
+                    {
+                        repository.Reset(ResetMode.Hard, remoteBranch.Tip);
+                    }
+
+                    LogUpdated(_logger, repo);
                 }
-
-                Commands.Fetch(repository, remote.Name, refSpecs, fetchOptions, "Fetching updates");
-
-                cancellationToken.ThrowIfCancellationRequested();
-
-                // Hard reset to remote HEAD to avoid detached HEAD state and merge conflicts
-                var remoteBranch = repository.Branches[$"origin/{repository.Head.FriendlyName}"];
-                if (remoteBranch is not null)
+                else
                 {
-                    repository.Reset(ResetMode.Hard, remoteBranch.Tip);
+                    // clone new repository
+                    var cloneOptions = new CloneOptions();
+                    if (_options.Verbose)
+                    {
+                        cloneOptions.FetchOptions.OnProgress = output =>
+                        {
+                            LogCloneProgress(_logger, repo, output.TrimEnd());
+                            return true;
+                        };
+
+                        cloneOptions.FetchOptions.OnTransferProgress = progress =>
+                        {
+                            var percent = progress.TotalObjects > 0
+                                ? (100 * progress.ReceivedObjects) / progress.TotalObjects
+                                : 0;
+                            LogCloneTransferProgress(_logger, repo, percent, progress.ReceivedObjects, progress.TotalObjects);
+                            return true;
+                        };
+                    }
+
+                    Repository.Clone($"https://github.com/{repo}.git", repoDir, cloneOptions);
+                    LogCloned(_logger, repo);
                 }
 
-                LogUpdated(_logger, repo);
-            }
-            catch (Exception ex)
+                return ValueTask.CompletedTask;
+            }, cancellationToken);
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            if (Directory.Exists(repoDir))
             {
                 LogUpdateFailed(_logger, ex, repo);
             }
-        }
-        else
-        {
-            // clone new repository
-            try
-            {
-                var cloneOptions = new CloneOptions();
-                if (_options.Verbose)
-                {
-                    cloneOptions.FetchOptions.OnProgress = output =>
-                    {
-                        LogCloneProgress(_logger, repo, output.TrimEnd());
-                        return true;
-                    };
-                    
-                    cloneOptions.FetchOptions.OnTransferProgress = progress =>
-                    {
-                        var percent = progress.TotalObjects > 0 
-                            ? (100 * progress.ReceivedObjects) / progress.TotalObjects 
-                            : 0;
-                        LogCloneTransferProgress(_logger, repo, percent, progress.ReceivedObjects, progress.TotalObjects);
-                        return true;
-                    };
-                }
-
-                Repository.Clone($"https://github.com/{repo}.git", repoDir, cloneOptions);
-                LogCloned(_logger, repo);
-            }
-            catch (Exception ex)
+            else
             {
                 LogCloneFailed(_logger, ex, repo);
             }
+            return false;
         }
+    }
 
-        return Task.CompletedTask;
+    private static bool IsTransientException(LibGit2SharpException ex)
+    {
+        // Check for transient network errors that should be retried
+        var message = ex.Message.ToLowerInvariant();
+        return message.Contains("timeout") ||
+               message.Contains("network") ||
+               message.Contains("connection") ||
+               message.Contains("could not resolve host") ||
+               message.Contains("failed to receive");
     }
 
     [LoggerMessage(LogLevel.Information, "Updated {repo}")]
@@ -170,4 +238,10 @@ public sealed partial class WallpaperHarvester : IWallpaperHarvester
 
     [LoggerMessage(LogLevel.Debug, "[{repo}] Clone transfer: {percent}% ({receivedObjects}/{totalObjects})")]
     static partial void LogCloneTransferProgress(ILogger logger, string repo, int percent, int receivedObjects, int totalObjects);
+
+    [LoggerMessage(LogLevel.Warning, "Retry {retryCount} due to: {error}")]
+    static partial void LogRetry(ILogger logger, int retryCount, string error);
+
+    [LoggerMessage(LogLevel.Information, "Completed: {succeeded}/{total} succeeded, {failed} failed")]
+    static partial void LogHarvestSummary(ILogger logger, int succeeded, int total, int failed);
 }

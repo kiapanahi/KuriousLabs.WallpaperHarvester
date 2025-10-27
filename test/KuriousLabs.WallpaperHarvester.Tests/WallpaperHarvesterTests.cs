@@ -23,9 +23,15 @@ public class WallpaperHarvesterTests
 
         var harvester = new KuriousLabs.WallpaperHarvester.Core.WallpaperHarvester(logger, options, config);
 
-        // Act & Assert
-        await harvester.HarvestAsync();
-        // Should not throw any exceptions
+        // Act
+        var result = await harvester.HarvestAsync();
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.Equal(0, result.Total);
+        Assert.Equal(0, result.Succeeded);
+        Assert.Equal(0, result.Failed);
+        Assert.Empty(result.FailedRepos);
     }
 
     [Fact]
@@ -39,9 +45,12 @@ public class WallpaperHarvesterTests
         var harvester = new KuriousLabs.WallpaperHarvester.Core.WallpaperHarvester(logger, options, config);
 
         // Act
-        await harvester.HarvestAsync();
+        var result = await harvester.HarvestAsync();
 
-        // Assert
+        // Assert - Invalid repos are not counted in the result
+        Assert.Equal(0, result.Total);
+        Assert.Equal(0, result.Succeeded);
+        Assert.Equal(0, result.Failed);
         Assert.Contains(logger.LoggedMessages, m =>
             m.Contains("Invalid repository format") &&
             m.Contains("invalid-repo-format"));
@@ -64,13 +73,14 @@ public class WallpaperHarvesterTests
         Directory.CreateDirectory(options.Value.WallpaperDirectory);
 
         // Act
-        await harvester.HarvestAsync();
+        var result = await harvester.HarvestAsync();
 
         // Assert
-        // Since we're testing concurrent processing, we can't easily verify the exact
-        // timing, but we can verify that all repositories were attempted to be processed
-        // and that the method completed without hanging
-        Assert.True(true); // If we get here, Task.WhenAll worked correctly
+        Assert.NotNull(result);
+        Assert.Equal(ValidRepos.Length, result.Total);
+        // We can't verify the exact success/failure counts as these depend on network conditions
+        // but we can verify the total equals succeeded + failed
+        Assert.Equal(result.Total, result.Succeeded + result.Failed);
     }
 
     [Fact]
@@ -88,11 +98,13 @@ public class WallpaperHarvesterTests
         var harvester = new KuriousLabs.WallpaperHarvester.Core.WallpaperHarvester(logger, options, config);
 
         // Act
-        await harvester.HarvestAsync();
+        var result = await harvester.HarvestAsync();
 
         // Assert
-        // Should not throw exceptions, should log errors instead
-        Assert.True(true);
+        Assert.NotNull(result);
+        Assert.Equal(ErrorRepos.Length, result.Total);
+        // Errors should be tracked
+        Assert.Equal(result.Total, result.Succeeded + result.Failed);
     }
 
     [Fact]
@@ -110,10 +122,11 @@ public class WallpaperHarvesterTests
         var harvester = new KuriousLabs.WallpaperHarvester.Core.WallpaperHarvester(logger, options, config);
 
         // Act
-        await harvester.HarvestAsync();
+        var result = await harvester.HarvestAsync();
 
         // Assert - Should not throw when verbose mode is enabled
-        Assert.True(true);
+        Assert.NotNull(result);
+        Assert.Equal(result.Total, result.Succeeded + result.Failed);
     }
 
     [Fact]
@@ -171,8 +184,56 @@ public class WallpaperHarvesterTests
         var harvester = new KuriousLabs.WallpaperHarvester.Core.WallpaperHarvester(logger, options, config);
 
         // Act & Assert - default(CancellationToken) should work without issue
-        await harvester.HarvestAsync();
-        // Should not throw any exceptions
+        var result = await harvester.HarvestAsync();
+        Assert.NotNull(result);
+        Assert.Equal(0, result.Total);
+    }
+
+    [Fact]
+    public async Task HarvestResultTracksSuccessAndFailure()
+    {
+        // Arrange
+        var logger = new TestLogger();
+        var options = Microsoft.Extensions.Options.Options.Create(new AppOptions
+        {
+            WallpaperDirectory = Path.Combine(Path.GetTempPath(), "TestHarvestResult")
+        });
+        // Mix of repos - some will fail due to network/nonexistent
+        var config = new TestConfiguration(ErrorRepos);
+
+        var harvester = new KuriousLabs.WallpaperHarvester.Core.WallpaperHarvester(logger, options, config);
+
+        // Act
+        var result = await harvester.HarvestAsync();
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.Equal(ErrorRepos.Length, result.Total);
+        Assert.True(result.Failed >= 0); // At least track failures
+        Assert.Equal(result.Total, result.Succeeded + result.Failed);
+        Assert.Equal(result.Failed, result.FailedRepos.Count);
+    }
+
+    [Fact]
+    public async Task HarvestResultLogsCompletionSummary()
+    {
+        // Arrange
+        var logger = new TestLogger();
+        var options = Microsoft.Extensions.Options.Options.Create(new AppOptions
+        {
+            WallpaperDirectory = Path.Combine(Path.GetTempPath(), "TestSummary")
+        });
+        var config = new TestConfiguration(ErrorRepos);
+
+        var harvester = new KuriousLabs.WallpaperHarvester.Core.WallpaperHarvester(logger, options, config);
+
+        // Act
+        var result = await harvester.HarvestAsync();
+
+        // Assert - Verify summary message is logged
+        Assert.Contains(logger.LoggedMessages, m => m.Contains("Completed:"));
+        Assert.Contains(logger.LoggedMessages, m => m.Contains("succeeded"));
+        Assert.Contains(logger.LoggedMessages, m => m.Contains("failed"));
     }
 }
 
