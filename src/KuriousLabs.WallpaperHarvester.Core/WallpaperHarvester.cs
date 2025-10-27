@@ -107,7 +107,7 @@ public sealed partial class WallpaperHarvester : IWallpaperHarvester
             }
         }
 
-        var result = new HarvestResult(validRepos.Length, succeeded, failed, failedRepos.ToList());
+        var result = new HarvestResult(validRepos.Length, succeeded, failed, failedRepos.ToArray());
         LogHarvestSummary(_logger, succeeded, validRepos.Length, failed);
         return result;
     }
@@ -118,12 +118,13 @@ public sealed partial class WallpaperHarvester : IWallpaperHarvester
 
         var name = repo.Split('/')[1];
         var repoDir = Path.Combine(directory, name);
+        var isUpdate = Directory.Exists(repoDir);
 
         try
         {
             await _retryPipeline.ExecuteAsync(ct =>
             {
-                if (Directory.Exists(repoDir))
+                if (isUpdate)
                 {
                     // update existing repository
                     using var repository = new Repository(repoDir);
@@ -189,7 +190,7 @@ public sealed partial class WallpaperHarvester : IWallpaperHarvester
         }
         catch (Exception ex)
         {
-            if (Directory.Exists(repoDir))
+            if (isUpdate)
             {
                 LogUpdateFailed(_logger, ex, repo);
             }
@@ -204,12 +205,40 @@ public sealed partial class WallpaperHarvester : IWallpaperHarvester
     private static bool IsTransientException(LibGit2SharpException ex)
     {
         // Check for transient network errors that should be retried
+        // LibGit2Sharp doesn't expose ErrorCode directly, so we need to rely on message parsing
+        // Common transient error patterns in LibGit2Sharp:
         var message = ex.Message.ToLowerInvariant();
-        return message.Contains("timeout") ||
-               message.Contains("network") ||
-               message.Contains("connection") ||
-               message.Contains("could not resolve host") ||
-               message.Contains("failed to receive");
+        
+        // Network connectivity issues
+        if (message.Contains("timeout") ||
+            message.Contains("timed out") ||
+            message.Contains("connection") ||
+            message.Contains("could not resolve host") ||
+            message.Contains("failed to receive") ||
+            message.Contains("failed to connect") ||
+            message.Contains("network is unreachable") ||
+            message.Contains("temporary failure"))
+        {
+            return true;
+        }
+        
+        // Don't retry permanent failures
+        // - Authentication/permission errors
+        // - Invalid repository paths
+        // - Corrupted repositories
+        if (message.Contains("authentication") ||
+            message.Contains("permission denied") ||
+            message.Contains("does not exist") ||
+            message.Contains("not found") ||
+            message.Contains("access denied") ||
+            message.Contains("invalid") ||
+            message.Contains("corrupt"))
+        {
+            return false;
+        }
+        
+        // Default to not retrying if we can't classify the error
+        return false;
     }
 
     [LoggerMessage(LogLevel.Information, "Updated {repo}")]
