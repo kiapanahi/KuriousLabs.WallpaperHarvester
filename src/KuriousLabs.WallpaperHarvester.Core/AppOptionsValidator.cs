@@ -68,16 +68,6 @@ public sealed class AppOptionsValidator : IValidateOptions<AppOptions>
 
     private static void ValidateDirectoryAccess(string directory)
     {
-        Directory.CreateDirectory(directory);
-        var testFile = Path.Combine(directory, ".write-test");
-        try
-        {
-            File.WriteAllText(testFile, "test");
-            File.Delete(testFile);
-        }
-        catch (UnauthorizedAccessException ex)
-        {
-            throw new InvalidOperationException($"Cannot write to directory: {directory}", ex);
-        }
+        DirectoryHelper.EnsureDirectoryExists(directory);
     }
 }
