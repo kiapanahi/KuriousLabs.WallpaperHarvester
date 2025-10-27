@@ -62,7 +62,7 @@ public sealed partial class WallpaperHarvester : IWallpaperHarvester
         }
     }
 
-    private async Task ProcessRepositoryAsync(string repo, string directory, CancellationToken cancellationToken)
+    private Task ProcessRepositoryAsync(string repo, string directory, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -142,7 +142,7 @@ public sealed partial class WallpaperHarvester : IWallpaperHarvester
             }
         }
 
-        await Task.CompletedTask;
+        return Task.CompletedTask;
     }
 
     [LoggerMessage(LogLevel.Information, "Updated {repo}")]
