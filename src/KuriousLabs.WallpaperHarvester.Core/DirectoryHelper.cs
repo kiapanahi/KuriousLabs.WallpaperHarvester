@@ -18,11 +18,10 @@ public sealed class DirectoryHelper
         // Fallback if Pictures folder doesn't exist
         if (string.IsNullOrEmpty(picturesPath))
         {
-            picturesPath = OperatingSystem.IsWindows()
-                ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Pictures")
-                : OperatingSystem.IsMacOS()
-                    ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Personal), "Pictures")
-                    : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Personal), "Pictures");
+            var homeFolder = OperatingSystem.IsWindows()
+                ? Environment.SpecialFolder.UserProfile
+                : Environment.SpecialFolder.Personal;
+            picturesPath = Path.Combine(Environment.GetFolderPath(homeFolder), "Pictures");
         }
 
         return Path.Combine(picturesPath, "Wallpapers");
@@ -85,8 +84,25 @@ public sealed class DirectoryHelper
 
             // Verify write permissions
             var testFile = Path.Combine(path, $".write-test-{Guid.NewGuid()}");
-            File.WriteAllText(testFile, "test");
-            File.Delete(testFile);
+            try
+            {
+                File.WriteAllText(testFile, "test");
+            }
+            finally
+            {
+                // Ensure cleanup even if deletion fails
+                try
+                {
+                    if (File.Exists(testFile))
+                    {
+                        File.Delete(testFile);
+                    }
+                }
+                catch
+                {
+                    // Ignore cleanup errors
+                }
+            }
         }
         catch (UnauthorizedAccessException ex)
         {
