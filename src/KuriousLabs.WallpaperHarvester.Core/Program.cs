@@ -16,13 +16,19 @@ var parallelOption = new Option<bool>(
     getDefaultValue: () => true,
     description: "Enable parallel processing of repositories");
 
+var verboseOption = new Option<bool>(
+    aliases: ["--verbose", "-v"],
+    getDefaultValue: () => false,
+    description: "Enable verbose output including progress reporting");
+
 var rootCommand = new RootCommand("WallpaperHarvester - Clone and update wallpaper repositories")
 {
     directoryOption,
-    parallelOption
+    parallelOption,
+    verboseOption
 };
 
-rootCommand.SetHandler(async (configFile, useParallel) =>
+rootCommand.SetHandler(async (configFile, useParallel, verbose) =>
 {
     var host = Host.CreateDefaultBuilder(args)
         .ConfigureAppConfiguration((context, config) =>
@@ -37,6 +43,7 @@ rootCommand.SetHandler(async (configFile, useParallel) =>
             {
                 options.ConfigFile = configFile;
                 options.UseParallel = useParallel;
+                options.Verbose = verbose;
             });
             services.AddTransient<IWallpaperHarvester, WallpaperHarvester>();
         })
@@ -44,6 +51,6 @@ rootCommand.SetHandler(async (configFile, useParallel) =>
 
     var harvester = host.Services.GetRequiredService<IWallpaperHarvester>();
     await harvester.HarvestAsync();
-}, directoryOption, parallelOption);
+}, directoryOption, parallelOption, verboseOption);
 
 return await rootCommand.InvokeAsync(args);

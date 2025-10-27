@@ -74,7 +74,20 @@ public sealed partial class WallpaperHarvester : IWallpaperHarvester
                 var remote = repository.Network.Remotes["origin"];
                 var refSpecs = remote.FetchRefSpecs.Select(x => x.Specification);
 
-                Commands.Fetch(repository, remote.Name, refSpecs, null, "Fetching updates");
+                var fetchOptions = new FetchOptions();
+                if (_options.Verbose)
+                {
+                    fetchOptions.OnTransferProgress = progress =>
+                    {
+                        var percent = progress.TotalObjects > 0 
+                            ? (100 * progress.ReceivedObjects) / progress.TotalObjects 
+                            : 0;
+                        LogFetchProgress(_logger, repo, percent, progress.ReceivedObjects, progress.TotalObjects);
+                        return true;
+                    };
+                }
+
+                Commands.Fetch(repository, remote.Name, refSpecs, fetchOptions, "Fetching updates");
 
                 // Hard reset to remote HEAD to avoid detached HEAD state and merge conflicts
                 var remoteBranch = repository.Branches[$"origin/{repository.Head.FriendlyName}"];
@@ -95,7 +108,26 @@ public sealed partial class WallpaperHarvester : IWallpaperHarvester
             // clone new repository
             try
             {
-                Repository.Clone($"https://github.com/{repo}.git", repoDir);
+                var cloneOptions = new CloneOptions();
+                if (_options.Verbose)
+                {
+                    cloneOptions.FetchOptions.OnProgress = output =>
+                    {
+                        LogCloneProgress(_logger, repo, output.TrimEnd());
+                        return true;
+                    };
+                    
+                    cloneOptions.FetchOptions.OnTransferProgress = progress =>
+                    {
+                        var percent = progress.TotalObjects > 0 
+                            ? (100 * progress.ReceivedObjects) / progress.TotalObjects 
+                            : 0;
+                        LogCloneTransferProgress(_logger, repo, percent, progress.ReceivedObjects, progress.TotalObjects);
+                        return true;
+                    };
+                }
+
+                Repository.Clone($"https://github.com/{repo}.git", repoDir, cloneOptions);
                 LogCloned(_logger, repo);
             }
             catch (Exception ex)
@@ -122,4 +154,13 @@ public sealed partial class WallpaperHarvester : IWallpaperHarvester
 
     [LoggerMessage(LogLevel.Error, "Failed to clone {repo}")]
     static partial void LogCloneFailed(ILogger logger, Exception ex, string repo);
+
+    [LoggerMessage(LogLevel.Debug, "[{repo}] Fetch progress: {percent}% ({receivedObjects}/{totalObjects})")]
+    static partial void LogFetchProgress(ILogger logger, string repo, int percent, int receivedObjects, int totalObjects);
+
+    [LoggerMessage(LogLevel.Debug, "[{repo}] Clone: {message}")]
+    static partial void LogCloneProgress(ILogger logger, string repo, string message);
+
+    [LoggerMessage(LogLevel.Debug, "[{repo}] Clone transfer: {percent}% ({receivedObjects}/{totalObjects})")]
+    static partial void LogCloneTransferProgress(ILogger logger, string repo, int percent, int receivedObjects, int totalObjects);
 }
