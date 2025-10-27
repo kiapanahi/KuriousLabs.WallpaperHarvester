@@ -24,7 +24,7 @@ public sealed partial class WallpaperHarvester : IWallpaperHarvester
         _config = config;
     }
 
-    public async Task HarvestAsync()
+    public async Task HarvestAsync(CancellationToken cancellationToken = default)
     {
         var repos = _config.GetSection("WallpaperRepositories").Get<string[]>();
         if (repos is null || repos.Length == 0)
@@ -48,20 +48,24 @@ public sealed partial class WallpaperHarvester : IWallpaperHarvester
 
         if (_options.UseParallel)
         {
-            var tasks = validRepos.Select(repo => ProcessRepositoryAsync(repo, directory));
-            await Task.WhenAll(tasks);
+            await Parallel.ForEachAsync(validRepos,
+                new ParallelOptions { CancellationToken = cancellationToken },
+                async (repo, ct) => await ProcessRepositoryAsync(repo, directory, ct));
         }
         else
         {
             foreach (var repo in validRepos)
             {
-                await ProcessRepositoryAsync(repo, directory);
+                cancellationToken.ThrowIfCancellationRequested();
+                await ProcessRepositoryAsync(repo, directory, cancellationToken);
             }
         }
     }
 
-    private async Task ProcessRepositoryAsync(string repo, string directory)
+    private async Task ProcessRepositoryAsync(string repo, string directory, CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
         var name = repo.Split('/')[1];
         var repoDir = Path.Combine(directory, name);
 
@@ -88,6 +92,8 @@ public sealed partial class WallpaperHarvester : IWallpaperHarvester
                 }
 
                 Commands.Fetch(repository, remote.Name, refSpecs, fetchOptions, "Fetching updates");
+
+                cancellationToken.ThrowIfCancellationRequested();
 
                 // Hard reset to remote HEAD to avoid detached HEAD state and merge conflicts
                 var remoteBranch = repository.Branches[$"origin/{repository.Head.FriendlyName}"];
@@ -135,6 +141,8 @@ public sealed partial class WallpaperHarvester : IWallpaperHarvester
                 LogCloneFailed(_logger, ex, repo);
             }
         }
+
+        await Task.CompletedTask;
     }
 
     [LoggerMessage(LogLevel.Information, "Updated {repo}")]

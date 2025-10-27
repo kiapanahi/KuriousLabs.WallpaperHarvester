@@ -50,7 +50,8 @@ rootCommand.SetHandler(async (configFile, useParallel, verbose) =>
         .Build();
 
     var harvester = host.Services.GetRequiredService<IWallpaperHarvester>();
-    await harvester.HarvestAsync();
+    var lifetime = host.Services.GetRequiredService<IHostApplicationLifetime>();
+    await harvester.HarvestAsync(lifetime.ApplicationStopping);
 }, directoryOption, parallelOption, verboseOption);
 
 return await rootCommand.InvokeAsync(args);

@@ -115,6 +115,65 @@ public class WallpaperHarvesterTests
         // Assert - Should not throw when verbose mode is enabled
         Assert.True(true);
     }
+
+    [Fact]
+    public async Task HarvestAsyncRespectsCancellationToken()
+    {
+        // Arrange
+        var logger = new TestLogger();
+        var options = Microsoft.Extensions.Options.Options.Create(new AppOptions
+        {
+            WallpaperDirectory = Path.Combine(Path.GetTempPath(), "TestCancellation"),
+            UseParallel = false
+        });
+        var config = new TestConfiguration(ValidRepos);
+
+        var harvester = new KuriousLabs.WallpaperHarvester.Core.WallpaperHarvester(logger, options, config);
+
+        var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        // Act & Assert
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+            await harvester.HarvestAsync(cts.Token));
+    }
+
+    [Fact]
+    public async Task HarvestAsyncRespectsCancellationTokenInParallelMode()
+    {
+        // Arrange
+        var logger = new TestLogger();
+        var options = Microsoft.Extensions.Options.Options.Create(new AppOptions
+        {
+            WallpaperDirectory = Path.Combine(Path.GetTempPath(), "TestCancellationParallel"),
+            UseParallel = true
+        });
+        var config = new TestConfiguration(ValidRepos);
+
+        var harvester = new KuriousLabs.WallpaperHarvester.Core.WallpaperHarvester(logger, options, config);
+
+        var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        // Act & Assert
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+            await harvester.HarvestAsync(cts.Token));
+    }
+
+    [Fact]
+    public async Task HarvestAsyncWithDefaultCancellationTokenDoesNotThrow()
+    {
+        // Arrange
+        var logger = new TestLogger();
+        var options = Microsoft.Extensions.Options.Options.Create(new AppOptions());
+        var config = new TestConfiguration(EmptyRepos);
+
+        var harvester = new KuriousLabs.WallpaperHarvester.Core.WallpaperHarvester(logger, options, config);
+
+        // Act & Assert - default(CancellationToken) should work without issue
+        await harvester.HarvestAsync();
+        // Should not throw any exceptions
+    }
 }
 
 // Test implementations
