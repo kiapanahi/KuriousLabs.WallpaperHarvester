@@ -47,7 +47,7 @@ rootCommand.SetHandler(async (configFile, useParallel, verbose) =>
                 options.Verbose = verbose;
             });
             services.AddSingleton<IValidateOptions<AppOptions>, AppOptionsValidator>();
-            services.AddTransient<IWallpaperHarvester, WallpaperHarvester>();
+            services.AddSingleton<IWallpaperHarvester, WallpaperHarvester>();
         })
         .Build();
 
