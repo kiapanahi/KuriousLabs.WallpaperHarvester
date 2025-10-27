@@ -34,7 +34,7 @@ public sealed class AppOptionsValidator : IValidateOptions<AppOptions>
             // Validate repository name format
             foreach (var repo in repos)
             {
-                if (!IsValidRepoFormat(repo))
+                if (!IsValidRepositoryFormat(repo))
                 {
                     errors.Add($"Invalid repository format: '{repo}'. Expected format: 'owner/repo'");
                 }
@@ -59,7 +59,7 @@ public sealed class AppOptionsValidator : IValidateOptions<AppOptions>
         return ValidateOptionsResult.Success;
     }
 
-    private static bool IsValidRepoFormat(string repo)
+    public static bool IsValidRepositoryFormat(string repo)
     {
         return repo.Split('/') is [var owner, var name]
             && !string.IsNullOrWhiteSpace(owner)

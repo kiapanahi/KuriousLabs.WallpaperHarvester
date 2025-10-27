@@ -38,7 +38,7 @@ public sealed partial class WallpaperHarvester : IWallpaperHarvester
 
         var validRepos = repos.Where(repo =>
         {
-            if (repo.Split('/') is not [var owner, var name])
+            if (!AppOptionsValidator.IsValidRepositoryFormat(repo))
             {
                 LogInvalidRepo(_logger, repo);
                 return false;
