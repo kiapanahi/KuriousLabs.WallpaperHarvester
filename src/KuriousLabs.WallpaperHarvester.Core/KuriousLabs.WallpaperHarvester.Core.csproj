@@ -15,6 +15,7 @@
     <PackageReference Include="LibGit2Sharp" />
     <PackageReference Include="Microsoft.Extensions.Hosting" />
     <PackageReference Include="Microsoft.Extensions.Options" />
+    <PackageReference Include="Polly" />
     <PackageReference Include="System.CommandLine" />
   </ItemGroup>
 

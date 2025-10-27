@@ -57,7 +57,10 @@ rootCommand.SetHandler(async (configFile, useParallel, verbose) =>
 
     var harvester = host.Services.GetRequiredService<IWallpaperHarvester>();
     var lifetime = host.Services.GetRequiredService<IHostApplicationLifetime>();
-    await harvester.HarvestAsync(lifetime.ApplicationStopping);
+    var result = await harvester.HarvestAsync(lifetime.ApplicationStopping);
+    
+    // Set exit code based on results
+    Environment.ExitCode = result.Failed > 0 ? 1 : 0;
 }, directoryOption, parallelOption, verboseOption);
 
 return await rootCommand.InvokeAsync(args);

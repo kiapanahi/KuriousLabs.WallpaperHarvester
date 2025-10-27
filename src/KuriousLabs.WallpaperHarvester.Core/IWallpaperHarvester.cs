@@ -2,5 +2,5 @@ namespace KuriousLabs.WallpaperHarvester.Core;
 
 public interface IWallpaperHarvester
 {
-    Task HarvestAsync(CancellationToken cancellationToken = default);
+    Task<HarvestResult> HarvestAsync(CancellationToken cancellationToken = default);
 }
