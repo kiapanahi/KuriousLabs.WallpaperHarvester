@@ -5,6 +5,7 @@ using KuriousLabs.WallpaperHarvester.Core;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
 
 var directoryOption = new Option<string>(
     aliases: ["--directory", "-d"],
@@ -45,9 +46,14 @@ rootCommand.SetHandler(async (configFile, useParallel, verbose) =>
                 options.UseParallel = useParallel;
                 options.Verbose = verbose;
             });
+            services.AddSingleton<IValidateOptions<AppOptions>, AppOptionsValidator>();
             services.AddTransient<IWallpaperHarvester, WallpaperHarvester>();
         })
         .Build();
+
+    // Validate options early to fail fast with clear error messages
+    var options = host.Services.GetRequiredService<IOptionsMonitor<AppOptions>>();
+    _ = options.CurrentValue; // This triggers validation
 
     var harvester = host.Services.GetRequiredService<IWallpaperHarvester>();
     var lifetime = host.Services.GetRequiredService<IHostApplicationLifetime>();
