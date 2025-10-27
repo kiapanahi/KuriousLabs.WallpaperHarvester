@@ -34,7 +34,7 @@ public sealed partial class WallpaperHarvester : IWallpaperHarvester
         }
 
         var directory = _options.WallpaperDirectory;
-        Directory.CreateDirectory(directory);
+        DirectoryHelper.EnsureDirectoryExists(directory, _logger);
 
         var validRepos = repos.Where(repo =>
         {
